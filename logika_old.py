@@ -9,9 +9,9 @@ PRAZNO = 0
 NEODLOCENO = 3
 NI_KONEC = 4
 
-NUM_COLS = 7
-NUM_ROWS = 6
-MAX_POTEZ = NUM_COLS * NUM_ROWS
+DIM_X = 8
+DIM_Y = 8
+MAX_POTEZ = DIM_X * DIM_Y
 
 def nasprotnik(igralec):
     if igralec == IGRALEC_1:
@@ -21,26 +21,19 @@ def nasprotnik(igralec):
     else:
         assert False, f"neveljaven nasprotnik: {igralec}"
 
-def sign(x):
-    return -1 if x<0 else 1
-
 class Logika:
     def __init__(self, na_potezi=IGRALEC_1):
         # Ustvarimo igralno povrsino
-        self.board = [[PRAZNO]*NUM_ROWS for _ in range(NUM_COLS)]
-
-        # Ustvarimo sezname s katerimi bomo vodili, ce je poteza veljavna
-        self.navoljo = [NUM_ROWS] * NUM_COLS # Koliko potez imamo v vsakem stolpcu se navoljo
-        self.vrstice_plus = [0] * NUM_COLS # V kateri vrstici smo v posameznem stolpcu v pozitivni smeri
-        self.vrstice_minus = [0] * NUM_COLS # V kateri vrstici smo v posameznem stolpcu v negativni smeri
+        # To bo dict, kjer bodo kljuci koordinate, vrednosti pa barva (IGRALEC_1/IGRALEC_2/PRAZNO), defaut=PRAZNO
+        self.board = dict()
 
         # Dolocimo igralca, ki je na potezi
         self.na_potezi = na_potezi
 
-        # Veljavne poteze - na zacetku je to samo (0,0) # TODO - premisli, ce smiselno?
-        self.veljavne_poteze = {i+1 for i in range(NUM_COLS)}
+        # Veljavne poteze - na zacetku je to samo (0,0)
+        self.veljavne_poteze = {(0,0)}
 
-        # Zgodovina potez
+        # Zgodovina potez - par (poteza, novi), kjer je novi tuple z vsemi novimi veljavnimi potezami, ki jih je prinesla poteza
         self.zgodovina = []
 
         # Stevilo potez
@@ -56,12 +49,8 @@ class Logika:
         L = Logika(self.na_potezi)
         
         # Prenesemo položaj na igralni povrsini
-        L.board = [[row for row in col] for col in self.board]
-
-        # Prenesemo stanja vrstic
-        L.navoljo = self.navoljo
-        L.vrstice_plus = [i for i in self.vrstice_plus]
-        L.vrstice_minus = [i for i in self.vrstice_minus]
+        for pos in self.board:
+            L.board[pos] = self.board[pos]
         
         # Prenesemo veljavne poteze
         L.veljavne_poteze = self.veljavne_poteze.copy()
@@ -78,45 +67,19 @@ class Logika:
 
         return L
     
-    def pridobi_koordinate(self, p, odigrana=False):
-        '''Vrne koordinate poteze p na igralni povrsini.'''
-        x = abs(p) - 1
-        if odigrana:
-            # Poteza je ze odigrana
-            y = (self.vrstice_plus[x]-1) if p>0 else -self.vrstice_minus[x] % NUM_ROWS
-        else:
-            # Poteza se ni odigrana - na te koordinate BO odigrana
-            y = self.vrstice_plus[x] if p>0 else -(self.vrstice_minus[x]+1) % NUM_ROWS
-        return x, y
-
     def odigraj_potezo(self, p):
         '''Odigraj potezo p, ce je veljavna, sicer ne naredi nic.'''
-        # assert self.na_potezi is not None, "Igre je konec!"
-        # assert abs(p) in self.veljavne_poteze, "Neveljavna poteza!"
-        if self.na_potezi is None or abs(p) not in self.veljavne_poteze:
-            return None, None
-
-        # Koordinate poteze
-        x,y = self.pridobi_koordinate(p)
-        if p > 0:
-            # Pozitivna smer
-            self.vrstice_plus[x] += 1
-        else:
-            # Negativna smer
-            self.vrstice_minus[x] += 1
-        
-        self.navoljo[x] -= 1 # Navoljo je 1 poteza manj
+        assert self.na_potezi is not None, "Igre je konec!"
+        assert p in self.veljavne_poteze, "Neveljavna poteza!"
 
         # Odigramo potezo p in povecamo stevilo potez
-        self.board[x][y] = self.na_potezi
+        self.board[p] = self.na_potezi
         self.stevilo_potez += 1
 
-        # Posodobimo veljavne poteze
-        if self.navoljo[x] == 0:
-            self.veljavne_poteze.remove(x+1)
-        
-        # Shranimo potezo v zgodovino
-        self.zgodovina.append(p)
+        # Posodobimo veljavne poteze in zgodovino
+        self.veljavne_poteze.remove(p) # p vec ni veljavna poteza
+        novi = self.dodaj_veljavne_poteze(p)
+        self.zgodovina.append((p, novi))
         
         # Preverimo, ce je igre konec
         zmagovalec, petka = self.stanje_po_potezi(p)
@@ -129,8 +92,6 @@ class Logika:
             self.na_potezi = None
             self.trenutno_stanje = zmagovalec
             self.petka = petka
-            # print(f"KONEC! Zmagal je {zmagovalec} s petko {self.petka}.")
-        
         return zmagovalec, petka
     
     def razveljavi_potezo(self):
@@ -138,29 +99,20 @@ class Logika:
         if len(self.zgodovina) == 0: # Ni potez za razveljaviti
             return
         
-        # Iz zgodovine pridobimo zadnjo odigrano potezo
-        p = self.zgodovina.pop()
-
-        # Posodobimo self.vrstice in self.navoljo
-        x, y = self.pridobi_koordinate(p, True)
-        if p > 0:
-            # Pozitivna smer
-            self.vrstice_plus[x] -= 1
-        else:
-            # Negativna smer
-            self.vrstice_minus[x] -= 1
-        self.navoljo[x] += 1
-
-        # Posodobimo veljavne poteze, ce potrebno
-        if self.navoljo[x] == 1:
-            self.veljavne_poteze.add(x+1)
+        # Iz zgodovine pridobimo zadnjo odigrano potezo in nove veljavne poteze, ki jih je doprinesla
+        p, novi = self.zgodovina.pop()
 
         # Pridobimo igralca, ki je bil na potezi
-        self.na_potezi = self.board[x][y]
+        self.na_potezi = self.board[p]
 
         # Odstranimo potezo iz igralne povrsine
-        self.board[x][y] = PRAZNO
+        del self.board[p]
         self.stevilo_potez -= 1
+
+        # Posodobimo veljavne poteze
+        self.veljavne_poteze.add(p)
+        for pi in novi:
+            self.veljavne_poteze.remove(pi)
         
         # Ce je bilo igre konec, to odstranimo
         if self.trenutno_stanje != NI_KONEC:
@@ -169,23 +121,26 @@ class Logika:
 
     def preveri_resitev(self, p, dx, dy):
         '''Preveri, ce je p del resitve z x-naklonom dx in y-naklonom dy.'''
-        x0,y0 = self.pridobi_koordinate(p, True)
-        petka = [(x0,y0)]
+        x,y = p
+        petka = [p]
 
-        x = (x0+dx) % NUM_COLS
-        y = (y0+dy) % NUM_ROWS
-        while len(petka) < 5 and self.board[x][y] == self.na_potezi:
-            petka.append((x,y))
-            x = (x+dx) % NUM_COLS
-            y = (y+dy) % NUM_ROWS
-        
-        x = (x0-dx) % NUM_COLS
-        y = (y0-dy) % NUM_ROWS
-        while len(petka) < 5 and self.board[x][y] == self.na_potezi:
-            petka.append((x,y))
-            x = (x-dx) % NUM_COLS
-            y = (y-dy) % NUM_ROWS
-        
+        x = (x+dx) % DIM_X
+        y = (y+dy) % DIM_Y
+        pi = (x, y)
+        while len(petka) < 5 and pi in self.board and self.board[pi] == self.na_potezi:
+            petka.append(pi)
+            x = (x+dx) % DIM_X
+            y = (y+dy) % DIM_Y
+            pi = (x, y)
+        x,y = p
+        x = (x-dx) % DIM_X
+        y = (y-dy) % DIM_Y
+        pi = (x, y)
+        while len(petka) < 5 and pi in self.board and self.board[pi] == self.na_potezi:
+            petka.append(pi)
+            x = (x-dx) % DIM_X
+            y = (y-dy) % DIM_Y
+            pi = (x, y)
         return petka
     
     def stanje_igre(self):
@@ -213,3 +168,28 @@ class Logika:
             return NEODLOCENO, None
         else:
             return NI_KONEC, None
+    
+    def dodaj_veljavne_poteze(self, p):
+        '''Dodamo veljavne poteze, ki jih je prinesla poteza p, in vrnemo na novo dodane polozaje.'''
+        novi = []
+        x,y = p
+        y1 = (y+1) % DIM_Y
+        y2 = (y-1) % DIM_Y
+        for i in range(3):
+            pi1 = ((x-1+i) % DIM_X, y1)
+            pi2 = ((x-1+i) % DIM_X, y2)
+            if pi1 not in self.board and pi1 not in self.veljavne_poteze:
+                novi.append(pi1)
+                self.veljavne_poteze.add(pi1)
+            if pi2 not in self.board and pi2 not in self.veljavne_poteze:
+                novi.append(pi2)
+                self.veljavne_poteze.add(pi2)
+        pi1 = ((x-1) % DIM_X, y)
+        pi2 = ((x+1) % DIM_X, y)
+        if pi1 not in self.board and pi1 not in self.veljavne_poteze:
+            novi.append(pi1)
+            self.veljavne_poteze.add(pi1)
+        if pi2 not in self.board and pi2 not in self.veljavne_poteze:
+            novi.append(pi2)
+            self.veljavne_poteze.add(pi2)
+        return tuple(novi)
