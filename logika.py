@@ -78,6 +78,9 @@ class Logika:
 
         return L
     
+    def kopiraj_board(self):
+        return [[row for row in col] for col in self.board]
+    
     def pridobi_koordinate(self, p, odigrana=False):
         '''Vrne koordinate poteze p na igralni povrsini.'''
         x = abs(p) - 1
@@ -108,6 +111,7 @@ class Logika:
         self.navoljo[x] -= 1 # Navoljo je 1 poteza manj
 
         # Odigramo potezo p in povecamo stevilo potez
+        # print(p, x, y)
         self.board[x][y] = self.na_potezi
         self.stevilo_potez += 1
 

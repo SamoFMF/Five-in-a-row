@@ -174,8 +174,8 @@ class Gui:
 
         # self.igralec_1 = Clovek(self)
         # self.igralec_2 = Clovek(self)
-        self.igralec_1 = Racunalnik(self, Minimax(4))
-        self.igralec_2 = Racunalnik(self, Minimax(3))
+        self.igralec_1 = Racunalnik(self, Minimax(4, "negascout"))
+        self.igralec_2 = Racunalnik(self, Minimax(4, "negascout"))
 
         # Pobrisemo odigrane poteze
         self.platno.delete(Gui.TAG_FIGURA)

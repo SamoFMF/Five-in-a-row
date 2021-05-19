@@ -1,19 +1,28 @@
 # MINIMAX METODA ZA RESEVANJE PET V VRSTO
 
 from logika import *
-from random import random, choice
+from random import betavariate, random, choice
+from time import time
 
 class Minimax:
     TABELA_VREDNOSTI = {0: 0, 1: 1, 2: 2.5, 3: 4, 4: 6} # Tabela vrednosti povezanih k-terk
     POVEZANI_FAKTORJI = {0: 0, 1: 1, 2: 1.25, 3: 1.33, 4: 1.5} # Tabela faktorjev za pomnoziti st. povezanih in prostih
 
-    def __init__(self, globina, pruning=True):
+    def __init__(self, globina, metoda="alphabeta"):
         self.max_globina = globina # Maksimalna globina iskanja
         self.prekinitev = False # Ce zelimo iskanje predcasno koncati
         self.igra: Logika = None # Razred Logika, kjer imamo shranjeno igro
         self.jaz = None # Igralec, ki ga igramo
         self.poteza = None # Sem vpisemo potezo, ko jo najdemo
-        self.pruning = pruning
+        self.algoritem = None
+        if metoda == "minimax":
+            self.algoritem = lambda g: self.minimax(g, True)
+        elif metoda == "alphabeta":
+            self.algoritem = lambda g: self.alphabeta(g, -float("inf"), float("inf"), True)
+        elif metoda == "negamax":
+            self.algoritem = lambda g: self.negamax(g, -float("inf"), float("inf"), 1)
+        elif metoda == "negascout":
+            self.algoritem = lambda g: self.negascout(g, -float("inf"), float("inf"), 1)
 
         # Vrednosti igre
         self.ZMAGA = 10**5
@@ -35,10 +44,13 @@ class Minimax:
         self.vrednost = -float("inf")
 
         # Pozenemo minimax/alphabeta na z iterative deepening
-        if self.pruning:
-            poteza, vrednost = self.alphabeta(self.max_globina, -float("inf"), float("inf"), True)
-        else:
-            poteza, vrednost = self.minimax(self.max_globina, True)
+        # if self.pruning:
+        #     poteza, vrednost = self.alphabeta(self.max_globina, -float("inf"), float("inf"), True)
+        # else:
+        #     poteza, vrednost = self.minimax(self.max_globina, True)
+        timestart = time()
+        poteza, vrednost = self.algoritem(self.max_globina)
+        timeend = time()
         
         self.igra = None
         self.jaz = None
@@ -46,7 +58,8 @@ class Minimax:
         if not self.prekinitev:
             # Nismo bili prekinjeni => izvedemo potezo
             self.poteza = poteza
-            print(f"Računalnik igra {poteza} z vrednostjo {vrednost}.")
+            # print(self.poteza, end=", ")
+            print(f"Računalnik igra {poteza} z vrednostjo {round(vrednost, 2)}. Izračunano v {round((timeend-timestart)*1000)}ms.")
     
     def dodaj_igro(self, igra, jaz):
         self.igra = igra
@@ -119,7 +132,7 @@ class Minimax:
                     assert False, "Tukaj ne bi smeli biti!"
                 else:
                     if povezanih == 3 and dvosmerno:
-                        vrednost += self.ZMAGA / 10
+                        vrednost += self.ZMAGA / 1000
                     else:
                         vrednost += povezanih # Vrednosti pristejemo dolzino povezanih pokritih barv v dani smeri
                         vrednost_prostih = prostih * (1+povezanih/5) / 2 # Prazno povezano polje je vredno pol pokritega | hkrati je vredno vec, ce je zraven daljsega pokritega zaporedja
@@ -221,7 +234,7 @@ class Minimax:
             -poteza [tuple(int,int)]: najboljsa poteza
             -vrednost [int]: vrednost vrnjene poteze'''
         if self.prekinitev:
-            # Igro moramo prekini - TODO: premisli, ce raje (None, 0)
+            # Igro moramo prekiniti - TODO: premisli, ce raje (None, 0)
             if maximize:
                 return None, -self.NESKONCNO
             else:
@@ -270,34 +283,83 @@ class Minimax:
                 if beta <= alpha:
                     break
             return najboljsa_poteza, min_vrednost
-
-# G = Logika()
-# G.odigraj_potezo(4)
-
-# M = Minimax(5)
-# M.dodaj_igro(G.kopija(), G.na_potezi)
-# print(M.alphabeta(0, -float("inf"), float("inf"), True))
-
-# G = Logika()
-# M = Minimax(4)
-
-# from time import time
-# t = time()
-# i = 0
-# while G.na_potezi is not None:
-#     M.dodaj_igro(G.kopija(), G.na_potezi)
-#     if True:
-#         poteza, vrednost = M.alphabeta(M.max_globina, -float("inf"), float("inf"), True)
-#     else:
-#         poteza, vrednost = M.minimax(M.max_globina, True)
-#     print(f"Poteza {i}: Igralec {G.na_potezi} igra {poteza} z vrednostjo {vrednost}.")
-#     G.odigraj_potezo(poteza)
-#     i += 1
-# print(f"Zmagal je {G.trenutno_stanje} s petko {G.petka}.")
-# total = time()-t
-# print(total, total / i)
-
-# zgo = [7,7,7,7,3,3,3,3,3,3,4,2,6,5,5,-1,2,2,2,-7,7,-2] #1,-4
-# G = Logika()
-# for p in zgo:
-#     G.odigraj_potezo(p)
+    
+    def negamax(self, globina, alpha, beta, barva):
+        if self.prekinitev:
+            # Igro moramo prekiniti
+            return self.NESKONCNO * barva
+        
+        # Preverimo najprej, ce je igre konec
+        zmagovalec = self.igra.trenutno_stanje
+        if zmagovalec != NI_KONEC:
+            # Igre je konec
+            if zmagovalec == self.jaz:
+                return None, barva * self.ZMAGA * self.k()
+            elif zmagovalec == NEODLOCENO:
+                return None, 0
+            else:
+                return None, barva * (-self.ZMAGA) * self.k()
+        elif globina == 0:
+            # Prisli smo do max globine in igre ni konec - vrnemo hevristicno vrednost polozaja
+            return None, barva * self.vrednost_polozaja()
+        else:
+            # Iscemo globlje
+            max_vrednost = -float("inf")
+            najboljsa_poteza = None
+            for p in sorted([i for i in self.igra.veljavne_poteze] + [-i for i in self.igra.veljavne_poteze], key=self.kljuc):
+                self.igra.odigraj_potezo(p)
+                _, vrednost = self.negamax(globina-1, -beta, -alpha, -barva)
+                vrednost = -vrednost
+                self.igra.razveljavi_potezo()
+                if vrednost > max_vrednost:
+                    max_vrednost = vrednost
+                    najboljsa_poteza = p
+                alpha = max(alpha, max_vrednost)
+                if alpha >= beta:
+                    break
+            return najboljsa_poteza, max_vrednost
+    
+    def negascout(self, globina, alpha, beta, barva):
+        if self.prekinitev:
+            # Igro moramo prekiniti
+            return self.NESKONCNO * barva
+        
+        # Najprej preverimo, ce je igre konec
+        zmagovalec = self.igra.trenutno_stanje
+        if zmagovalec != NI_KONEC:
+            # Igre je konec
+            if zmagovalec == self.jaz:
+                return None, barva * self.ZMAGA * self.k()
+            elif zmagovalec == NEODLOCENO:
+                return None, 0
+            else:
+                return None, barva * (-self.ZMAGA) * self.k()
+        elif globina == 0:
+            # Prisli smo do max globine in igre ni konec - vrnemo hevristicno vrednost polozaja
+            return None, barva * self.vrednost_polozaja()
+        else:
+            poteze = sorted([i for i in self.igra.veljavne_poteze] + [-i for i in self.igra.veljavne_poteze], key=self.kljuc)
+            
+            # Najprej naredimo prvo potezo
+            self.igra.odigraj_potezo(poteze[0])
+            najboljsa_poteza = poteze[0]
+            _, vrednost = self.negascout(globina-1, -beta, -alpha, -barva)
+            vrednost = -vrednost
+            self.igra.razveljavi_potezo()
+            alpha = max(alpha, vrednost)
+            if alpha < beta:
+                # Preverimo preostale poteze
+                for p in poteze[1:]:
+                    self.igra.odigraj_potezo(p)
+                    _, vrednost = self.negascout(globina-1, -alpha-1, -alpha, -barva)
+                    vrednost = -vrednost
+                    if alpha < vrednost < beta:
+                        _, vrednost = self.negascout(globina-1, -beta, -vrednost, -barva)
+                        vrednost = -vrednost
+                    self.igra.razveljavi_potezo()
+                    if vrednost > alpha:
+                        alpha = vrednost
+                        najboljsa_poteza = p
+                    if alpha >= beta:
+                        break
+            return najboljsa_poteza, alpha
