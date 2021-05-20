@@ -1,3 +1,4 @@
+from ai import AIPlayer
 import tkinter as tk # GUI
 
 from logika import *
@@ -174,8 +175,13 @@ class Gui:
 
         # self.igralec_1 = Clovek(self)
         # self.igralec_2 = Clovek(self)
-        self.igralec_1 = Racunalnik(self, Minimax(4, "negascout"))
-        self.igralec_2 = Racunalnik(self, Minimax(4, "negascout"))
+        self.igralec_1 = Racunalnik(self, AIPlayer("ai", 0, 0.9, 0.1))
+        self.igralec_1.algoritem.nalozi_strategijo("ai_100k_p1")
+        # self.igralec_1 = Racunalnik(self, Minimax(4, "alphabeta"))
+        self.igralec_2 = Racunalnik(self, Minimax(5, "negamax_memo"))
+        # # self.igralec_1.algoritem.vrednost_polozaja = self.igralec_1.algoritem.vrednost_polozaja_old
+        # self.igralec_2.algoritem.vrednost_polozaja = self.igralec_2.algoritem.vrednost_polozaja_old
+        # self.igralec_1.algoritem.bias = 1
 
         # Pobrisemo odigrane poteze
         self.platno.delete(Gui.TAG_FIGURA)

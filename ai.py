@@ -1,8 +1,9 @@
 # Reinforcement learning AI igralec
 from random import random, choice
-from logika import PRAZNO
+from logika import PRAZNO, Logika
 import pickle
 from os import path
+from time import time
 
 class AIPlayer:
     def __init__(self, ime, epsilon, gamma, alpha, nagrada=0):
@@ -14,6 +15,37 @@ class AIPlayer:
         self.alpha = alpha # Koliko upostevamo novo vrednost | 1-alpha .. koliko nam pomeni trenutna ocena stanja
         self.state_values = dict() # Vrednosti stanj, ki smo jih ze obiskali
         self.R = nagrada # Nagrada po vsaki potezi
+
+        # Za igranje proti racunalniku
+        self.igra = None
+        self.jaz = None
+        self.prekinitev = False
+        self.poteza = None
+        self.vrednost = -float("inf")
+    
+    def prekini(self):
+        '''Metoda, ki jo klicemo, ko zelimo, da algoritem preneha z iskanjem.'''
+        self.prekinitev = True
+    
+    def izracunaj_potezo(self, igra):
+        '''Izracuno potezo za trenutno stanje podane igre.'''
+        self.igra: Logika = igra
+        self.jaz = self.igra.na_potezi
+        self.prekinitev = False # Glavno vlakno bo nastavilo to na True, ce bomo morali prekiniti
+        self.poteza = None # Sem vpisemo potezo, ko jo najdemo
+
+        timestart = time()
+        poteza, vrednost = self.pridobi_max(self.igra.board, self.igra.veljavne_poteze, self.igra.na_potezi)
+        timeend = time()
+
+        self.igra = None
+        self.jaz = None
+
+        if not self.prekinitev:
+            # Nismo bili prekinjeni => izvedemo potezo
+            self.poteza = poteza
+            # print(self.poteza, end=", ")
+            print(f"Računalnik igra {poteza} z vrednostjo {round(vrednost, 2)}. Izračunano v {round((timeend-timestart)*1000)}ms.")
     
     def get_hash(self, board):
         '''Vrne board, ki je seznam seznamov intov, v obliki tupla tuplov, da ga lahko uporabimo v dictionary.'''
