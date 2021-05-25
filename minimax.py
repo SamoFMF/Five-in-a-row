@@ -35,6 +35,8 @@ class Minimax:
         self.jaz = None # Igralec, ki ga igramo
         self.poteza = None # Sem vpisemo potezo, ko jo najdemo
         self.algoritem = None
+        self.tabela = {}
+        self.ime = metoda
         if metoda == "minimax":
             self.algoritem = lambda g: self.minimax(g, True)
         elif metoda == "alphabeta":
@@ -44,7 +46,9 @@ class Minimax:
         elif metoda == "negascout":
             self.algoritem = lambda g: self.negascout(g, -float("inf"), float("inf"), 1)
         elif metoda == "negamax_memo":
-            self.algoritem = lambda g: self.negamax_transposition(g, -float("inf"), float("inf"), 1, dict())
+            self.algoritem = lambda g: self.negamax_transposition(g, -float("inf"), float("inf"), 1)
+        elif metoda == "negascout_memo":
+            self.algoritem = lambda g: self.negascout_transposition(g, -float("inf"), float("inf"), 1)
 
         # Vrednosti igre
         self.ZMAGA = 10**5
@@ -82,6 +86,26 @@ class Minimax:
             # print(self.poteza, end=", ")
             print(f"Računalnik igra {poteza} z vrednostjo {round(vrednost, 2)}. Izračunano v {round((timeend-timestart)*1000)}ms.")
     
+    def izracunaj_potezo_test(self, igra):
+        '''Izracuno potezo za trenutno stanje podane igre.
+        Uporabi metodo self.algoritem.'''
+        self.igra = igra
+        self.jaz = self.igra.na_potezi
+
+        # # Pozenemo minimax/alphabeta na z iterative deepening
+        # if self.pruning:
+        #     poteza, vrednost = self.alphabeta(self.max_globina, -float("inf"), float("inf"), True)
+        # else:
+        #     poteza, vrednost = self.minimax(self.max_globina, True)
+        timestart = time()
+        poteza, _ = self.algoritem(self.max_globina)
+        timeend = time()
+        
+        self.igra = None
+        self.jaz = None
+
+        return poteza, timeend-timestart
+   
     def dodaj_igro(self, igra, jaz):
         self.igra = igra
         self.jaz = jaz
@@ -385,20 +409,24 @@ class Minimax:
         '''Vrne board, ki je seznam seznamov intov, v obliki tupla tuplov, da ga lahko uporabimo v dictionary.'''
         return tuple(tuple(i) for i in self.igra.board)
     
-    def negamax_transposition(self, globina, alpha, beta, barva, tabela):
+    def negamax_transposition(self, globina, alpha, beta, barva):
+        if self.prekinitev:
+            # Igro moramo prekiniti
+            return self.NESKONCNO * barva
+        
         alpha_original = alpha
 
         hash = self.get_hash()
-        if hash in tabela and tabela[hash]["globina"] >= globina:
-            flag = tabela[hash]["flag"]
+        if hash in self.tabela and self.tabela[hash]["globina"] >= globina:
+            flag = self.tabela[hash]["flag"]
             if flag == Minimax.EXACT:
-                return tabela[hash]["poteza"], tabela[hash]["vrednost"]
+                return self.tabela[hash]["poteza"], self.tabela[hash]["vrednost"]
             elif flag == Minimax.LOWERBOUND:
-                alpha = max(alpha, tabela[hash]["vrednost"])
+                alpha = max(alpha, self.tabela[hash]["vrednost"])
             else:
-                beta = min(beta, tabela[hash]["vrednost"])
+                beta = min(beta, self.tabela[hash]["vrednost"])
             if alpha >= beta:
-                return tabela[hash]["poteza"], tabela[hash]["vrednost"]
+                return self.tabela[hash]["poteza"], self.tabela[hash]["vrednost"]
         
         # Preverimo najprej, ce je igre konec
         zmagovalec = self.igra.trenutno_stanje
@@ -419,7 +447,7 @@ class Minimax:
             najboljsa_poteza = None
             for p in sorted([i for i in self.igra.veljavne_poteze] + [-i for i in self.igra.veljavne_poteze], key=self.kljuc):
                 self.igra.odigraj_potezo(p)
-                _, vrednost = self.negamax_transposition(globina-1, -beta, -alpha, -barva, tabela)
+                _, vrednost = self.negamax_transposition(globina-1, -beta, -alpha, -barva)
                 vrednost = -vrednost
                 self.igra.razveljavi_potezo()
                 if vrednost > max_vrednost:
@@ -437,7 +465,7 @@ class Minimax:
                 tt["flag"] = Minimax.LOWERBOUND
             else:
                 tt["flag"] = Minimax.EXACT
-            tabela[hash] = tt
+            self.tabela[hash] = tt
 
             return najboljsa_poteza, max_vrednost
     
@@ -484,4 +512,74 @@ class Minimax:
                         najboljsa_poteza = p
                     if alpha >= beta:
                         break
+            return najboljsa_poteza, alpha
+    
+    def negascout_transposition(self, globina, alpha, beta, barva):
+        if self.prekinitev:
+            # Igro moramo prekiniti
+            return self.NESKONCNO * barva
+        
+        alpha_original = alpha
+
+        hash = self.get_hash()
+        if hash in self.tabela and self.tabela[hash]["globina"] >= globina:
+            flag = self.tabela[hash]["flag"]
+            if flag == Minimax.EXACT:
+                return self.tabela[hash]["poteza"], self.tabela[hash]["vrednost"]
+            elif flag == Minimax.LOWERBOUND:
+                alpha = max(alpha, self.tabela[hash]["vrednost"])
+            else:
+                beta = min(beta, self.tabela[hash]["vrednost"])
+            if alpha >= beta:
+                return self.tabela[hash]["poteza"], self.tabela[hash]["vrednost"]
+        
+        # Najprej preverimo, ce je igre konec
+        zmagovalec = self.igra.trenutno_stanje
+        if zmagovalec != NI_KONEC:
+            # Igre je konec
+            if zmagovalec == self.jaz:
+                return None, barva * self.ZMAGA * self.k()
+            elif zmagovalec == NEODLOCENO:
+                return None, 0
+            else:
+                return None, barva * (-self.ZMAGA) * self.k()
+        elif globina == 0:
+            # Prisli smo do max globine in igre ni konec - vrnemo hevristicno vrednost polozaja
+            return None, barva * self.vrednost_polozaja()
+        else:
+            poteze = sorted([i for i in self.igra.veljavne_poteze] + [-i for i in self.igra.veljavne_poteze], key=self.kljuc)
+            
+            # Najprej naredimo prvo potezo
+            self.igra.odigraj_potezo(poteze[0])
+            najboljsa_poteza = poteze[0]
+            _, vrednost = self.negascout(globina-1, -beta, -alpha, -barva)
+            vrednost = -vrednost
+            self.igra.razveljavi_potezo()
+            alpha = max(alpha, vrednost)
+            if alpha < beta:
+                # Preverimo preostale poteze
+                for p in poteze[1:]:
+                    self.igra.odigraj_potezo(p)
+                    _, vrednost = self.negascout(globina-1, -alpha-1, -alpha, -barva)
+                    vrednost = -vrednost
+                    if alpha < vrednost < beta:
+                        _, vrednost = self.negascout(globina-1, -beta, -vrednost, -barva)
+                        vrednost = -vrednost
+                    self.igra.razveljavi_potezo()
+                    if vrednost > alpha:
+                        alpha = vrednost
+                        najboljsa_poteza = p
+                    if alpha >= beta:
+                        break
+            
+            # Shranimo v tabelo
+            tt = {"globina": globina, "vrednost": alpha, "poteza": najboljsa_poteza}
+            if alpha <= alpha_original:
+                tt["flag"] = Minimax.UPPERBOUND
+            elif alpha >= beta:
+                tt["flag"] = Minimax.LOWERBOUND
+            else:
+                tt["flag"] = Minimax.EXACT
+            self.tabela[hash] = tt
+
             return najboljsa_poteza, alpha

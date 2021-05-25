@@ -11,13 +11,14 @@ class ReinforcementLearning:
     def shrani_igralca(self, idx, filename):
         self.igralca[idx].shrani_strategijo(filename)
     
-    def train(self, rounds=1000):
+    def train(self, rounds=1000, reset_globina=0):
         '''Train agents.'''
-        wins = [0,0]
+        wins = [0,0,0] # [p1, p2, tie]
         for i in range(rounds):
             if i%1000 == 0:
                 print("Stevilo iger:", i)
             self.igra = Logika()
+            obiskani = set()
             while self.igra.trenutno_stanje == NI_KONEC:
                 igralec = self.igralca[self.igra.na_potezi - 1]
                 p = igralec.izberi_potezo(self.igra.kopiraj_board(), self.igra.veljavne_poteze, self.igra.na_potezi)
@@ -30,26 +31,46 @@ class ReinforcementLearning:
                 if zmagovalec != NI_KONEC:
                     # Igre je konec
                     self.razdeli_nagrade(zmagovalec)
-                    self.igralca[0].reset()
-                    self.igralca[1].reset()
+                    konec = True if reset_globina == 0 else False
 
-                    if zmagovalec == IGRALEC_1:
-                        wins[0] += 1
+                    if zmagovalec == NEODLOCENO:
+                        konec = True
+                        wins[2] += 1
+                    elif zmagovalec == IGRALEC_1:
+                        if hash in obiskani:
+                            konec = True
+                        else:
+                            wins[0] += 1
+                            obiskani.add(hash)
                     elif zmagovalec == IGRALEC_2:
-                        wins[1] += 1
+                        if hash in obiskani:
+                            konec = True
+                        else:
+                            wins[1] += 1
+                            obiskani.add(hash)
+                    
+                    if konec:
+                        self.igralca[0].reset()
+                        self.igralca[1].reset()
+                    else:
+                        for _ in range(reset_globina):
+                            self.igra.razveljavi_potezo()
+                            self.igra.razveljavi_potezo()
+                            self.igralca[0].states.pop()
+                            self.igralca[1].states.pop()
         print(wins)
     
     def razdeli_nagrade(self, zmagovalec):
         if zmagovalec == NEODLOCENO:
             # Neodlocen rezultat - pricakujemo, da ima prvi igralec majhno prednost, zato mu je ta rezultat slabsi
-            self.igralca[0].posodobi_vrednosti(0.25, IGRALEC_1)
-            self.igralca[1].posodobi_vrednosti(0.5, IGRALEC_2)
+            self.igralca[0].posodobi_vrednosti(-0.1, IGRALEC_1)
+            self.igralca[1].posodobi_vrednosti(0.1, IGRALEC_2)
         elif zmagovalec == IGRALEC_1:
             # Zmagal je IGRALEC_1 (idx=0)
             self.igralca[0].posodobi_vrednosti(1, IGRALEC_1)
-            self.igralca[1].posodobi_vrednosti(0, IGRALEC_2)
+            self.igralca[1].posodobi_vrednosti(-1, IGRALEC_2)
         elif zmagovalec == IGRALEC_2:
-            self.igralca[0].posodobi_vrednosti(0, IGRALEC_1)
+            self.igralca[0].posodobi_vrednosti(-1, IGRALEC_1)
             self.igralca[1].posodobi_vrednosti(1, IGRALEC_2)
         else:
             assert False, f"Konec igre z neznanim zmagovalcem: {zmagovalec}"
